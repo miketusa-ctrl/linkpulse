@@ -1,0 +1,58 @@
+# LinkPulse broken-link check for GitHub Actions.
+# Copy to .github/workflows/linkpulse-check.yml in your repo. Needs only curl + jq (both preinstalled on ubuntu-latest).
+# Checks ONE page per API call (up to 200 links, ~45 s max). The free anonymous API allows 20 checks per hour per IP
+# and has a shared daily capacity; GitHub-hosted runners share IPs, so a 429 is possible. This workflow retries once
+# after Retry-After when the wait is 2 minutes or less.
+name: LinkPulse link check
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  links:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      LINKPULSE_API: https://linkpulse.mike-tusa.workers.dev/api/check
+      # Space-separated list of pages to check (each one uses one API call).
+      PAGES: "https://example.com/"
+      # Set to "true" to also fail on redirect chains of 3+ hops.
+      FAIL_ON_LONG_CHAINS: "false"
+      # "true" = don't fail on links that answered 401/403/429/999 (often bot protection, not a dead link).
+      IGNORE_BOT_BLOCKED: "false"
+    steps:
+      - name: Check links with LinkPulse
+        shell: bash
+        run: |
+          set -euo pipefail
+          failed=0
+          for page in $PAGES; do
+            echo "::group::LinkPulse: $page"
+            for attempt in 1 2; do
+              code=$(curl -sS -o result.json -D headers.txt -w '%{http_code}' --max-time 120 \
+                --get --data-urlencode "url=$page" "$LINKPULSE_API")
+              if [ "$code" = "429" ] && [ "$attempt" = "1" ]; then
+                wait=$(grep -i '^retry-after:' headers.txt | tr -dc '0-9'); wait=${wait:-60}
+                if [ "$wait" -le 120 ]; then echo "Rate limited, retrying in ${wait}s"; sleep "$wait"; continue; fi
+              fi
+              break
+            done
+            if [ "$code" != "200" ]; then
+              echo "::error::LinkPulse returned HTTP $code for $page: $(jq -r '.error.code + ": " + .error.message' result.json 2>/dev/null || cat result.json)"
+              failed=1; echo "::endgroup::"; continue
+            fi
+            jq -r '"checked=\(.summary.checked) ok=\(.summary.ok) redirected=\(.summary.redirected) broken=\(.summary.broken) blocked=\(.summary.blocked) unchecked=\(.summary.unchecked) mixedContent=\(.summary.mixedContent) truncated=\(.truncated)"' result.json
+            BROKEN='[.links[] | select(.category == "broken") | select($ign != "true" or ((.flags | index("maybe_bot_blocked")) | not))]'
+            jq -r --arg ign "$IGNORE_BOT_BLOCKED" "$BROKEN"' | .[] | "::error title=Broken link::\(.status // "-") \(.error.code) \(.url)"' result.json
+            jq -r '.links[] | select(.flags | index("long_chain")) | "::warning title=Long redirect chain::\(.redirects) redirects \(.url)"' result.json
+            jq -r '.links[] | select(.flags | map(startswith("mixed_content")) | any) | "::warning title=Mixed content::\(.url)"' result.json
+            if [ "$(jq '.truncated' result.json)" = "true" ]; then echo "::notice::Result truncated: $(jq -c '.truncatedReasons' result.json)"; fi
+            broken=$(jq --arg ign "$IGNORE_BOT_BLOCKED" "$BROKEN | length" result.json)
+            longc=$(jq '.summary.longChains' result.json)
+            if [ "$broken" -gt 0 ]; then failed=1; fi
+            if [ "$FAIL_ON_LONG_CHAINS" = "true" ] && [ "$longc" -gt 0 ]; then failed=1; fi
+            echo "::endgroup::"
+          done
+          exit "$failed"

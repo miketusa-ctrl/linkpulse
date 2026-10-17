@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LinkPulse API docs – broken-link checker JSON API</title>
+<meta name="description" content="LinkPulse JSON API reference: /api/check request and response schema, limits, curl and JavaScript examples, and a GitHub Action that fails on broken links.">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/style.css">
+<link rel="canonical" href="{{ORIGIN}}/docs">
+<link rel="alternate" type="text/plain" href="/llms.txt" title="llms.txt">
+<link rel="service-desc" type="application/json" href="/openapi.json" title="OpenAPI 3.1">
+</head>
+<body class="doc">
+<header class="top">
+  <div class="wrap nav">
+    <a class="brand" href="/"><svg width="22" height="22" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="#0f766e"/><path d="M13 19l6-6M11.5 15.5l-2 2a3.5 3.5 0 005 5l2-2M20.5 16.5l2-2a3.5 3.5 0 00-5-5l-2 2" stroke="#fff" stroke-width="2.4" fill="none" stroke-linecap="round"/></svg> LinkPulse</a>
+    <nav><a href="/">Checker</a><a href="#api">API</a><a href="#github-action">GitHub Action</a></nav>
+  </div>
+</header>
+<main class="wrap">
+<h1>LinkPulse API docs</h1>
+<p class="lead">One call checks one page. LinkPulse fetches the page, pulls out its links, and checks up to 200 of them, following every redirect hop by hand. Before every request, the host's DNS records are checked to make sure it's a public address. It returns versioned JSON. Free, no key, CORS enabled.</p>
+
+<h2 id="api">Endpoints</h2>
+<table class="tbl">
+<tr><th>Method &amp; path</th><th>Description</th></tr>
+<tr><td><code>GET /api/check?url=&lt;page&gt;</code></td><td>Check one page. Optional <code>assets=false</code> (only <code>&lt;a&gt;</code>/<code>&lt;area&gt;</code> links) and <code>max=1..200</code> (links to fetch, default 200). When there are more links than <code>max</code>, about half the slots go to hyperlinks and half to assets, each in document order.</td></tr>
+<tr><td><code>POST /api/check</code></td><td>Same, with a JSON body <code>{"url": "...", "assets": true, "max": 200}</code> (or form-encoded). The body can be at most 8 KB.</td></tr>
+<tr><td><code>GET /api/health</code></td><td>Service status, version, schema id and limits.</td></tr>
+<tr><td><code>OPTIONS /api/*</code></td><td>CORS preflight (<code>Access-Control-Allow-Origin: *</code>).</td></tr>
+</table>
+<p>A URL without a scheme is treated as <code>https://</code>. Only <code>http</code>/<code>https</code> on ports 80/443 are accepted.</p>
+
+<h2 id="examples">Examples</h2>
+<h3>curl</h3>
+<pre><code>curl -s "{{ORIGIN}}/api/check?url=https://example.com/" | jq '.summary'
+
+# only &lt;a href&gt; links, at most 20
+curl -s "{{ORIGIN}}/api/check?url=https://example.com/&amp;assets=false&amp;max=20"
+
+# POST JSON
+curl -s -X POST "{{ORIGIN}}/api/check" -H 'content-type: application/json' \
+  -d '{"url":"https://example.com/"}' | jq '.links[] | select(.category=="broken") | .url'</code></pre>
+<h3>JavaScript (browser or Node 18+)</h3>
+<pre><code>const res = await fetch("{{ORIGIN}}/api/check?url=" + encodeURIComponent("https://example.com/"));
+if (res.status === 429) {
+  console.log("rate limited, retry after", res.headers.get("retry-after"), "s");
+} else {
+  const r = await res.json();
+  if (r.error) throw new Error(r.error.code + ": " + r.error.message);
+  console.log(r.summary);                                   // { checked, ok, broken, ... }
+  for (const l of r.links.filter(l =&gt; l.category === "broken")) console.log(l.status, l.url);
+  for (const l of r.links.filter(l =&gt; l.redirects)) console.log(l.hops.map(h =&gt; h.status + " " + h.url).join(" -&gt; "));
+}</code></pre>
+
+<h2 id="schema">Response schema (<code>linkpulse.check.v1</code>)</h2>
+<p>Fields are only ever added under <code>linkpulse.check.v1</code>, never removed or renamed. A breaking change would get a new <code>schema</code> id.</p>
+<pre><code>{
+  "schema": "linkpulse.check.v1",
+  "version": "{{VERSION}}",
+  "checkedAt": "2026-10-03T13:00:00.000Z",
+  "input": "http://github.com",
+  "options": { "assets": true, "max": 200 },
+  "page": {
+    "url": "http://github.com/", "finalUrl": "https://github.com/", "status": 200, "ok": true,
+    "contentType": "text/html; charset=utf-8", "bytes": 285000, "bodyTruncated": false,
+    "redirects": 1,
+    "hops": [ { "url": "http://github.com/", "status": 301, "location": "https://github.com/", "ms": 40, "method": "GET" },
+              { "url": "https://github.com/", "status": 200, "ms": 180, "method": "GET" } ],
+    "ms": 260
+  },
+  "summary": { "linksFound": 314, "uniqueLinks": 243, "checked": 200, "ok": 186, "redirected": 11, "broken": 3,
+               "blocked": 0, "unchecked": 43, "mixedContent": 0, "insecureLinks": 0, "longChains": 1,
+               "redirectLoops": 0, "maybeBotBlocked": 2, "resolvesPrivate": 0 },
+  "truncated": true,
+  "truncatedReasons": ["link_cap"],
+  "links": [ /* link objects, see below */ ],
+  "notChecked": { "count": 43, "sample": ["https://github.com/...", "..."] },
+  "skipped": { "fragment_only": 3, "non_http_scheme": 1, "link_rel_hint": 4 },
+  "notes": [ { "level": "info", "text": "..." } ],
+  "limits": { "pagesPerCheck": 1, "maxLinks": 200, "maxHops": 10, "longChainRedirects": 3, "subrequestBudget": 1000,
+              "pageTimeoutMs": 10000, "linkTimeoutMs": 8000, "dnsTimeoutMs": 2500, "deadlineMs": 45000,
+              "maxPageBytes": 3000000, "concurrency": 6, "maxBlockedListed": 100, "maxExtracted": 5000, "dnsForLinks": true },
+  "timings": { "totalMs": 7500, "pageMs": 260, "linksMs": 7240 },
+  "subrequests": 262,
+  "dnsLookups": 42
+}</code></pre>
+<p>The numbers above are illustrative, not a real result.</p>
+
+<h3>Link object</h3>
+<pre><code>{
+  "url": "http://example.org/old",     // absolute URL as found on the page (fragment removed)
+  "kind": "link",                       // link | image | script | stylesheet | icon | resource | iframe | media | embed
+  "tag": "a", "count": 2,               // source tag; how many times it appears
+  "category": "redirect",               // ok | redirect | broken | blocked | unchecked
+  "status": 200,                        // final HTTP status (null if no response)
+  "finalUrl": "https://example.org/new",
+  "method": "HEAD",                     // HEAD, or GET when HEAD failed and was retried
+  "redirects": 2,
+  "hops": [ { "url": "http://example.org/old", "status": 301, "location": "https://example.org/old", "ms": 30, "method": "HEAD" },
+            { "url": "https://example.org/old", "status": 302, "location": "https://example.org/new", "ms": 41, "method": "HEAD" },
+            { "url": "https://example.org/new", "status": 200, "ms": 38, "method": "HEAD" } ],
+  "ms": 112,
+  "error": null,                        // or { "code": "...", "message": "..." }
+  "flags": ["insecure_link"]
+}</code></pre>
+<table class="tbl">
+<tr><th>category</th><th>Meaning</th></tr>
+<tr><td><code>ok</code></td><td>2xx/3xx final response with no redirects.</td></tr>
+<tr><td><code>redirect</code></td><td>Ends in a non-error response after one or more redirects (see <code>hops</code>).</td></tr>
+<tr><td><code>broken</code></td><td>Final status ≥ 400 (or 530). Also a host that doesn't exist (NXDOMAIN or no A/AAAA records, <code>error.code: "dns_error"</code>), a connect/TLS error, a timeout, a redirect loop, more than 10 redirects, or an invalid Location header.</td></tr>
+<tr><td><code>blocked</code></td><td>The link or one of its redirect hops points somewhere LinkPulse refuses to fetch: a private/loopback/metadata IP, <strong>a hostname whose DNS answers include such an IP</strong>, a local name, a non-80/443 port, or credentials in the URL. Not fetched.</td></tr>
+<tr><td><code>unchecked</code></td><td>Not fetched because the 1,000-request budget or the 45 s time limit ran out (<code>error.code</code> <code>subrequest_budget</code> / <code>deadline</code>), or because the DNS safety lookup failed (<code>dns_check_failed</code>, so the link was not fetched). Links beyond <code>max</code> are counted in <code>notChecked</code>. They're only listed in <code>links</code> (<code>error.code: "link_cap"</code>) when the HTML alone shows mixed content or a plain-HTTP link.</td></tr>
+</table>
+<table class="tbl">
+<tr><th>flag</th><th>Meaning</th></tr>
+<tr><td><code>mixed_content_active</code></td><td>HTTPS page loads an <code>http://</code> script, stylesheet, iframe, embed or other <code>&lt;link&gt;</code> resource. Browsers block these.</td></tr>
+<tr><td><code>mixed_content_passive</code></td><td>HTTPS page loads an <code>http://</code> image, video, audio or track.</td></tr>
+<tr><td><code>insecure_link</code></td><td>HTTPS page has a plain <code>http://</code> hyperlink.</td></tr>
+<tr><td><code>https_downgrade</code></td><td>A redirect hop goes from https to http.</td></tr>
+<tr><td><code>long_chain</code></td><td>3 or more redirects.</td></tr>
+<tr><td><code>redirect_loop</code> / <code>too_many_redirects</code></td><td>Loop detected, or more than 10 hops.</td></tr>
+<tr><td><code>maybe_bot_blocked</code></td><td>Final 401/403/429/999 or a Cloudflare <code>cf-mitigated</code> challenge. The link may work in a browser, since many sites block cloud IPs.</td></tr>
+<tr><td><code>head_not_supported</code></td><td>HEAD returned an error but GET worked.</td></tr>
+<tr><td><code>blocked_redirect</code></td><td>A redirect pointed to a blocked target and was not followed.</td></tr>
+<tr><td><code>resolves_private</code></td><td>The link's host, or a redirect target's host, is a public name whose DNS answers include a private, loopback, link-local or metadata address (e.g. <code>localhost.direct</code> → 127.0.0.1).</td></tr>
+<tr><td><code>get_fallback_skipped</code></td><td>HEAD failed and no budget was left for a GET retry, so the HEAD result is shown.</td></tr>
+</table>
+
+<h2 id="errors">Errors and rate limits</h2>
+<p>Errors return a non-2xx status with <code>{"error": {"code", "message", ...}, "version"}</code>.</p>
+<table class="tbl">
+<tr><th>HTTP</th><th>code</th><th>When</th></tr>
+<tr><td>400</td><td><code>invalid_url</code>, <code>invalid_scheme</code>, <code>credentials_in_url</code>, <code>invalid_request</code></td><td>Bad input</td></tr>
+<tr><td>403</td><td><code>blocked_target</code>, <code>blocked_port</code>, <code>blocked_redirect</code></td><td>The page URL, or one of the page's redirect hops, is not a public 80/443 target. For the page, the host's A/AAAA records are also checked with DNS-over-HTTPS.</td></tr>
+<tr><td>422</td><td><code>dns_not_found</code></td><td>The page host doesn't resolve.</td></tr>
+<tr><td>429</td><td><code>rate_limited</code></td><td>Over 20 checks/hour/IP (<code>error.scope: "ip"</code>), a short burst of more than ~10 per minute (<code>"burst"</code>), or the service-wide daily check capacity is used up (<code>"global"</code>, resets 00:00 UTC). Has a <code>Retry-After</code> header (seconds) and <code>error.retryAfterSec</code>.</td></tr>
+<tr><td>502/504</td><td><code>page_fetch_failed</code>, <code>page_timeout</code>, <code>redirect_loop</code>, <code>too_many_redirects</code>, <code>bad_redirect</code>, <code>dns_error</code></td><td>The page itself couldn't be fetched. <code>error.redirects</code> holds the hops so far.</td></tr>
+</table>
+<p>Successful checks include <code>X-RateLimit-Limit</code>, <code>X-RateLimit-Remaining</code> and <code>X-RateLimit-Reset</code> (seconds). Identical requests within about 2 minutes are served from an in-memory cache (<code>x-cache: HIT</code>) and don't count. Inputs rejected by the URL rules before anything is fetched (400/403: scheme, port, IP literal, local names) don't count either. A page whose host fails the DNS check does count. A page that returns 4xx/5xx still gives a 200 response, with <code>page.ok: false</code>, and its links are not checked.</p>
+<p><strong>API keys:</strong> not available yet. If you send an <code>X-Api-Key</code> or <code>Authorization</code> header, it is ignored, the anonymous limit applies, and a note says so. There's no paid plan.</p>
+
+<h2 id="mcp">MCP server (for AI agents)</h2>
+<p><code>POST {{ORIGIN}}/mcp</code> is a remote <a href="https://modelcontextprotocol.io/" target="_blank" rel="noopener noreferrer">Model Context Protocol</a> server (Streamable HTTP, stateless, JSON responses; protocol 2026-07-28 and the older initialize-based versions). It has one read-only tool, <code>check_links</code> (<code>url</code>, optional <code>assets</code> and <code>max</code>), which runs the same check as <code>/api/check</code> with the same limits: each call counts as one check. The tool returns the summary counts plus up to 25 problem links; use the JSON API for the full <code>links[]</code> list. Errors (blocked targets, rate limits) come back as tool results with <code>isError: true</code> and <code>_meta["linkpulse/error"]</code> = <code>{code, httpStatus, retryAfterSeconds}</code>.</p>
+<pre><code>{ "mcpServers": { "linkpulse": { "type": "http", "url": "{{ORIGIN}}/mcp" } } }</code></pre>
+<p>Machine-readable docs: <a href="/llms.txt">llms.txt</a> · <a href="/openapi.json">OpenAPI 3.1</a> · <a href="/.well-known/mcp/server-card.json">server card</a>.</p>
+
+<h2 id="github-action">GitHub Action</h2>
+<p>Save this as <code>.github/workflows/linkpulse-check.yml</code>. It calls the API with curl, prints a summary with jq, annotates broken links, and <strong>fails the job if any link is broken</strong>. It only needs curl and jq, both preinstalled on <code>ubuntu-latest</code>. Raw file: <a href="/github-action.yml">/github-action.yml</a>.</p>
+<pre><code>{{ACTION_YAML}}</code></pre>
+
+<h2 id="security">How targets are restricted (SSRF guard)</h2>
+<ul>
+  <li>Only <code>http:</code>/<code>https:</code>, ports 80/443, no <code>user:pass@</code>.</li>
+  <li>IP literals in private, loopback, link-local, CGNAT, multicast, documentation or reserved ranges are refused. So are cloud metadata addresses (169.254.169.254, 100.100.100.200, fd00:ec2::254, 168.63.129.16), in IPv4 and IPv6 form, including IPv4-mapped, NAT64 and 6to4 forms. Decimal, hex and octal encodings (<code>2130706433</code>, <code>0x7f000001</code>, <code>0177.0.0.1</code>, <code>127.1</code>) are normalized first.</li>
+  <li><code>localhost</code>, <code>*.local</code>, <code>*.internal</code>, <code>*.localhost</code>, other special-use names, single-label hosts, wildcard-DNS services such as <code>*.nip.io</code>/<code>*.sslip.io</code>, and LinkPulse's own host are refused.</li>
+  <li>Every redirect hop is checked again before it's fetched.</li>
+  <li><strong>DNS check on every request:</strong> Workers have no DNS API, so before each request (the page, every link and every redirect hop) LinkPulse looks up the host's A and AAAA records over DNS-over-HTTPS (Cloudflare, falling back to Google). If any answer is non-public, the request isn't made. Lookups are cached per host for one check only. If the lookup fails, the link is reported <code>unchecked</code> and not fetched.</li>
+  <li>Remaining limitation: DNS can change between our lookup and Cloudflare's own resolution at fetch time (DNS rebinding with a very short TTL). Cloudflare's network is a second layer here: outbound <code>fetch()</code> leaves from Cloudflare's edge, not from a private network. That's defense in depth, not a guarantee.</li>
+</ul>
+</main>
+<footer class="foot"><div class="wrap">LinkPulse v{{VERSION}} · <a href="/">Checker</a> · <a href="/api/health">Status</a> · Contact: <a href="mailto:digitalpromohub.support@gmail.com">digitalpromohub.support@gmail.com</a></div></footer>
+</body>
+</html>

@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LinkPulse – free broken-link and redirect-chain checker</title>
+<meta name="description" content="Check one web page for broken links, redirect chains, redirect loops and mixed content. Free, no sign-up, with a JSON API and a GitHub Action example.">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/style.css">
+<link rel="canonical" href="{{ORIGIN}}/">
+<link rel="alternate" type="text/plain" href="/llms.txt" title="llms.txt">
+<link rel="service-desc" type="application/json" href="/openapi.json" title="OpenAPI 3.1">
+</head>
+<body>
+<header class="top">
+  <div class="wrap nav">
+    <a class="brand" href="/"><svg width="22" height="22" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="#0f766e"/><path d="M13 19l6-6M11.5 15.5l-2 2a3.5 3.5 0 005 5l2-2M20.5 16.5l2-2a3.5 3.5 0 00-5-5l-2 2" stroke="#fff" stroke-width="2.4" fill="none" stroke-linecap="round"/></svg> LinkPulse</a>
+    <nav><a href="#how">How it works</a><a href="/docs">API docs</a><a href="/docs#github-action">GitHub Action</a></nav>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="wrap">
+    <h1>Find broken links and redirect chains on a page</h1>
+    <p class="lead">Paste a URL. LinkPulse fetches that one page, checks up to 200 of its links and assets, and shows every redirect hop, broken link and mixed-content reference. Free, no sign-up.</p>
+    <form class="check" id="form" action="/api/check" method="get">
+      <input type="text" id="url" name="url" placeholder="https://example.com/" autocomplete="url" inputmode="url" spellcheck="false" required aria-label="Page URL">
+      <button type="submit" id="go">Check links</button>
+      <label><input type="checkbox" id="assets" checked> include images, scripts &amp; stylesheets</label>
+    </form>
+    <p class="hint">One page per check. Up to 200 links. 20 checks per hour per IP. Results are not stored.</p>
+    <div id="out" aria-live="polite"></div>
+  </div>
+</section>
+
+<main class="wrap">
+<h2 id="how">What it checks</h2>
+<div class="grid">
+  <div class="card"><h3>Broken links</h3><p>Each link gets a HEAD request, with a GET retry when HEAD fails. 4xx/5xx, hosts that don't exist in DNS, connection errors and timeouts are marked broken.</p></div>
+  <div class="card"><h3>Redirect chains</h3><p>Every hop is listed with its status and Location, up to 10 hops. Loops are detected, and chains of 3 or more redirects are flagged.</p></div>
+  <div class="card"><h3>Mixed content</h3><p>On HTTPS pages, LinkPulse flags <code>http://</code> scripts, stylesheets and iframes (active) and images and media (passive). It also flags plain-HTTP links and HTTPS→HTTP downgrades.</p></div>
+  <div class="card"><h3>JSON API + CI</h3><p>The same check is available at <code>/api/check</code> with a documented, versioned schema. There's also a <a href="/docs#github-action">GitHub Action example</a> that fails a job on broken links.</p></div>
+</div>
+
+<h2>Limits (honest version)</h2>
+<ul>
+  <li>One page per check. LinkPulse does not crawl your site and does not run scheduled checks.</li>
+  <li>At most 200 links are fetched per check, and a check stops after about 45 seconds. The result says <code>truncated: true</code> when links were left out. On pages with more than 200 links, about half the slots go to hyperlinks and half to images, scripts and stylesheets.</li>
+  <li>There's a shared daily limit on checks across all users. When it's used up, the API returns HTTP 429 until 00:00 UTC.</li>
+  <li>Some sites block or rate-limit cloud IPs and answer 401/403/429. Those links are flagged <em>maybe bot-blocked</em> because they may work fine in a browser.</li>
+  <li>Only public http/https URLs on ports 80/443 are checked. Private, loopback and metadata addresses are refused, including public hostnames that resolve to them (checked with DNS before every request).</li>
+  <li>Links are read from the HTML as served. Links added later by JavaScript aren't seen.</li>
+</ul>
+
+<section id="agents"><h2>For AI agents (MCP)</h2>
+<p>LinkPulse is also a remote <a href="https://modelcontextprotocol.io/" target="_blank" rel="noopener noreferrer">Model Context Protocol</a> (MCP) server with one read-only tool, <code>check_links</code> (same engine and limits as the API). Most MCP clients accept this config; some use a different format (for example, VS Code uses a <code>servers</code> key). Clients with a settings screen just need the URL <code>{{ORIGIN}}/mcp</code>.</p>
+<pre><code id="mcp-config">{ "mcpServers": { "linkpulse": { "type": "http", "url": "{{ORIGIN}}/mcp" } } }</code></pre>
+<p class="small">Machine-readable docs: <a href="/llms.txt">llms.txt</a> · <a href="/openapi.json">OpenAPI 3.1 spec</a> · <a href="/.well-known/mcp/server-card.json">server card</a></p></section>
+
+<h2 id="privacy">Privacy</h2>
+<p>We don't store the URLs you check or the results. Results are cached in memory for about 2 minutes so repeat checks are fast. To enforce the hourly limit, a counter is kept under a keyed one-way hash of your IP (never the IP itself) and deleted after the hour is up. A service-wide daily total of checks is also kept, with no IP attached. To count unique visitors per day, we keep a salted hash of your network address and the date (it changes every day and can't be linked back to an address without our secret key) for 9 days; no IP address is stored with it. No cookies, no third-party analytics, no third-party scripts. Hosted on Cloudflare Workers.</p>
+</main>
+
+<footer class="foot"><div class="wrap">LinkPulse v{{VERSION}} · <a href="/docs">API docs</a> · <a href="/api/health">Status</a> · Contact: <a href="mailto:digitalpromohub.support@gmail.com">digitalpromohub.support@gmail.com</a></div></footer>
+<script src="/app.js" defer></script>
+</body>
+</html>

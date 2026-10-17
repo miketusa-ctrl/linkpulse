@@ -1,0 +1,12 @@
+# gitleaks config: default rules plus an allowlist for known non-secrets in this repo.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Public Polar checkout-link IDs (shown on the live pricing page), docs placeholder keys, Mozilla CA root data"
+regexes = [
+  '''^polar_cl_[A-Za-z0-9]+$''',
+  '''^[a-z]{2}_live_(\.\.\.|YOUR_KEY)$''',
+  '''^(YOUR_API_KEY|DNSG-YOUR_LICENSE_KEY)$''',
+]
+paths = ['''(^|/)src/roots\.js$''']

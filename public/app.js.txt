@@ -1,0 +1,146 @@
+// LinkPulse client. All remote text is rendered with textContent / createTextNode only.
+(function () {
+  'use strict';
+  var form = document.getElementById('form');
+  var input = document.getElementById('url');
+  var assets = document.getElementById('assets');
+  var btn = document.getElementById('go');
+  var out = document.getElementById('out');
+  if (!form) return;
+
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined && text !== null) e.textContent = String(text);
+    return e;
+  }
+  function clear(n) { while (n.firstChild) n.removeChild(n.firstChild); }
+
+  var FLAG_TEXT = {
+    mixed_content_active: 'mixed content (active)', mixed_content_passive: 'mixed content (passive)',
+    insecure_link: 'plain-HTTP link', https_downgrade: 'HTTPS→HTTP downgrade', long_chain: 'long chain',
+    redirect_loop: 'redirect loop', too_many_redirects: 'too many redirects', maybe_bot_blocked: 'maybe bot-blocked',
+    head_not_supported: 'HEAD unsupported (GET ok)', blocked_redirect: 'blocked redirect', get_fallback_skipped: 'GET retry skipped', resolves_private: 'resolves to private IP'
+  };
+
+  function stat(n, label, cls) { var s = el('div', 'stat' + (cls ? ' ' + cls : '')); s.appendChild(el('b', null, n)); s.appendChild(el('span', null, label)); return s; }
+
+  function renderLink(l) {
+    var li = el('li', 'lk');
+    li.setAttribute('data-cat', l.category);
+    if (l.flags && l.flags.length) li.setAttribute('data-flags', '1');
+    var row = el('div', 'row');
+    row.appendChild(el('span', 'badge c-' + l.category, l.category));
+    row.appendChild(el('span', 'u', l.url));
+    var meta = [l.kind];
+    if (l.status !== null && l.status !== undefined) meta.push('HTTP ' + l.status);
+    if (l.redirects) meta.push(l.redirects + ' redirect' + (l.redirects > 1 ? 's' : ''));
+    if (l.method) meta.push(l.method);
+    if (l.ms) meta.push(l.ms + ' ms');
+    if (l.count > 1) meta.push('×' + l.count);
+    row.appendChild(el('span', 'meta', meta.join(' · ')));
+    li.appendChild(row);
+    if ((l.flags && l.flags.length) || l.error) {
+      var fr = el('div', 'row');
+      (l.flags || []).forEach(function (f) { fr.appendChild(el('span', 'flag', FLAG_TEXT[f] || f)); });
+      if (l.error) fr.appendChild(el('span', 'small', l.error.message));
+      li.appendChild(fr);
+    }
+    if (l.hops && l.hops.length > 1) {
+      var ol = el('ol', 'chain');
+      l.hops.forEach(function (h) {
+        ol.appendChild(el('li', null, h.status + ' ' + h.url + (h.location ? '  →  ' + h.location : '')));
+      });
+      li.appendChild(ol);
+    }
+    return li;
+  }
+
+  function render(j) {
+    clear(out);
+    var p = j.page;
+    var box = el('div', 'pagebox');
+    box.appendChild(el('strong', null, p.finalUrl));
+    box.appendChild(el('div', 'small', 'HTTP ' + p.status + ' · ' + (p.redirects ? p.redirects + ' redirect(s) · ' : '') + Math.round(p.bytes / 1024) + ' KB · ' + j.timings.totalMs + ' ms · ' + j.subrequests + ' requests'));
+    if (p.hops.length > 1) {
+      var ol = el('ol', 'chain');
+      p.hops.forEach(function (h) { ol.appendChild(el('li', null, h.status + ' ' + h.url + (h.location ? '  →  ' + h.location : ''))); });
+      box.appendChild(ol);
+    }
+    out.appendChild(box);
+    var s = j.summary;
+    var st = el('div', 'stats');
+    st.appendChild(stat(s.checked, 'checked'));
+    st.appendChild(stat(s.ok, 'ok', 'good'));
+    st.appendChild(stat(s.redirected, 'redirected'));
+    st.appendChild(stat(s.broken, 'broken', s.broken ? 'bad' : ''));
+    st.appendChild(stat(s.mixedContent, 'mixed content', s.mixedContent ? 'warn' : ''));
+    st.appendChild(stat(s.longChains, 'long chains', s.longChains ? 'warn' : ''));
+    st.appendChild(stat(s.blocked, 'blocked'));
+    st.appendChild(stat(s.unchecked, 'not checked'));
+    out.appendChild(st);
+    (j.notes || []).forEach(function (n) { out.appendChild(el('div', 'note ' + (n.level || ''), n.text)); });
+    if (j.truncated) out.appendChild(el('div', 'note warn', 'Truncated (' + j.truncatedReasons.join(', ') + '): ' + s.uniqueLinks + ' unique links found, ' + s.checked + ' checked. A check covers up to ' + j.limits.maxLinks + ' links on one page.'));
+    if (!j.links.length) { out.appendChild(el('p', 'hint', 'No http(s) links were found on this page.')); return; }
+
+    var order = { broken: 0, blocked: 1, redirect: 2, unchecked: 3, ok: 4 };
+    var links = j.links.slice().sort(function (a, b) { return (order[a.category] - order[b.category]) || (b.flags.length - a.flags.length); });
+    var filters = el('div', 'filters');
+    var list = el('ul', 'links');
+    var FILTERS = [['all', 'All'], ['broken', 'Broken'], ['redirect', 'Redirects'], ['flags', 'Flagged'], ['blocked', 'Blocked'], ['unchecked', 'Not checked'], ['ok', 'OK']];
+    function apply(f) {
+      Array.prototype.forEach.call(filters.children, function (b) { b.className = b.getAttribute('data-f') === f ? 'on' : ''; });
+      Array.prototype.forEach.call(list.children, function (li) {
+        var show = f === 'all' || (f === 'flags' ? li.getAttribute('data-flags') === '1' : li.getAttribute('data-cat') === f);
+        li.hidden = !show;
+      });
+    }
+    FILTERS.forEach(function (f) {
+      var b = el('button', '', f[1]); b.type = 'button'; b.setAttribute('data-f', f[0]);
+      b.addEventListener('click', function () { apply(f[0]); });
+      filters.appendChild(b);
+    });
+    out.appendChild(filters);
+    links.forEach(function (l) { list.appendChild(renderLink(l)); });
+    out.appendChild(list);
+    apply('all');
+    var raw = el('details');
+    raw.appendChild(el('summary', 'small', 'Raw JSON'));
+    raw.appendChild(el('pre', null, JSON.stringify(j, null, 2)));
+    out.appendChild(raw);
+  }
+
+  function showError(msg) { clear(out); out.appendChild(el('div', 'err', msg)); }
+
+  function run(u) {
+    btn.disabled = true;
+    clear(out);
+    var w = el('p', 'hint'); w.appendChild(el('span', 'spinner')); w.appendChild(document.createTextNode('Checking… this can take up to about a minute on pages with many links.')); out.appendChild(w);
+    var qs = '?url=' + encodeURIComponent(u) + (assets && !assets.checked ? '&assets=false' : '');
+    fetch('/api/check' + qs, { headers: { accept: 'application/json' } })
+      .then(function (r) { return r.json().then(function (j) { return { r: r, j: j }; }); })
+      .then(function (x) {
+        if (x.j && x.j.error) {
+          var m = x.j.error.message || x.j.error.code;
+          if (x.r.status === 429) m += ' (Retry-After: ' + (x.r.headers.get('retry-after') || '?') + ' s)';
+          showError(m);
+        } else render(x.j);
+      })
+      .catch(function () { showError('The check failed (network error). Please retry.'); })
+      .then(function () { btn.disabled = false; });
+  }
+
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var u = input.value.trim();
+    if (!u) return;
+    try { history.replaceState(null, '', '/?url=' + encodeURIComponent(u)); } catch (err) { /* ignore */ }
+    run(u);
+  });
+  var q = new URLSearchParams(location.search).get('url');
+  if (q) { input.value = q; run(q); }
+})();
+(function () {
+  var c = document.getElementById('mcp-config');
+  if (c) c.textContent = JSON.stringify({ mcpServers: { linkpulse: { type: 'http', url: location.origin + '/mcp' } } }, null, 2);
+})();

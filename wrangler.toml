@@ -1,0 +1,83 @@
+# Public template. Replace every <PLACEHOLDER> with your own Cloudflare resource IDs
+# (wrangler kv namespace create / wrangler d1 create). Rate-limit namespace IDs must be
+# unique integers within your account. Secrets go in `wrangler secret put`, never here.
+
+name = "linkpulse-staging"
+main = "src/index.js"
+compatibility_date = "2024-09-23"
+workers_dev = true
+preview_urls = false
+
+[limits]
+cpu_ms = 500
+
+[observability]
+enabled = false
+
+[[rules]]
+type = "Text"
+globs = ["**/*.html", "**/*.css", "**/*.txt", "**/*.yml"]
+fallthrough = true
+
+[vars]
+PUBLIC_LAUNCH = "false"
+PLAN_LIMITS = "paid"
+CHECKS_PER_HOUR = "20"
+DAILY_CHECK_CAP = "400"
+QUOTA_SHARDS = "4"
+MCP_REGISTRY_AUTH = ""
+
+[[kv_namespaces]]
+binding = "LINKPULSE_KV"
+id = "<KV_NAMESPACE_ID>"
+
+[[unsafe.bindings]]
+name = "BURST_LIMITER"
+type = "ratelimit"
+namespace_id = "<RATE_LIMIT_NAMESPACE_ID_1>"
+simple = { limit = 10, period = 60 }
+
+[[durable_objects.bindings]]
+name = "IP_QUOTA"
+class_name = "IpQuota"
+
+[[migrations]]
+tag = "v1-ipquota-sqlite"
+new_sqlite_classes = ["IpQuota"]
+
+[env.production]
+name = "linkpulse"
+workers_dev = true
+preview_urls = false
+
+[env.production.limits]
+cpu_ms = 500
+
+[env.production.observability]
+enabled = false
+
+[env.production.vars]
+PUBLIC_LAUNCH = "true"
+PLAN_LIMITS = "paid"
+CHECKS_PER_HOUR = "20"
+DAILY_CHECK_CAP = "400"
+QUOTA_SHARDS = "4"
+MCP_REGISTRY_AUTH = ""
+
+[[env.production.kv_namespaces]]
+binding = "LINKPULSE_KV"
+id = "<PRODUCTION_KV_NAMESPACE_ID>"
+
+[[env.production.unsafe.bindings]]
+name = "BURST_LIMITER"
+type = "ratelimit"
+namespace_id = "<RATE_LIMIT_NAMESPACE_ID_2>"
+simple = { limit = 10, period = 60 }
+
+[[env.production.durable_objects.bindings]]
+name = "IP_QUOTA"
+class_name = "IpQuota"
+
+[[env.production.migrations]]
+tag = "v1-ipquota-sqlite"
+new_sqlite_classes = ["IpQuota"]
