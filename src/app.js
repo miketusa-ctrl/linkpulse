@@ -51,7 +51,7 @@ async function burstLimited(env, key) {
   return false;
 }
 
-/** Rate-limit key for anonymous callers (agent-ready recipe r2 §1): IPv4 as is; IPv6 -> its /64. Same output as workdayapi's. */
+/** Rate-limit key for anonymous callers: IPv4 as is; IPv6 -> its /64. Same output as workdayapi's. */
 export function ipBucket(ip) {
   const s = String(ip || 'unknown').trim().toLowerCase();
   if (!s.includes(':')) return s;
@@ -73,8 +73,8 @@ export function memLimit(key, limit, periodMs = 60_000) {
 }
 
 /**
- * Shared gate for /api/check and /mcp (recipe r2 §1). LinkPulse has no API keys yet: every caller is anonymous and a
- * key header is ignored (the result gets an info note). Never echoes the key. -> { ok: true, tier, keyNote }
+ * Shared gate for /api/check and /mcp. LinkPulse has no API keys yet: every caller is anonymous and a key header is
+ * ignored (the result gets an info note). Never echoes the key. -> { ok: true, tier, keyNote }
  */
 export async function authenticate(request) {
   const sent = request.headers.get('x-api-key') || request.headers.get('authorization');
@@ -82,9 +82,9 @@ export async function authenticate(request) {
 }
 
 /**
- * The one check pipeline behind GET/POST /api/check and the MCP check_links tool (recipe r2 §1):
- * SSRF validation -> result cache (HIT: no limiter, no quota) -> burst limiter -> per-IP hourly + global daily quota
- * (Durable Object) -> runCheck. input = { raw, assets, max }.
+ * The one check pipeline behind GET/POST /api/check and the MCP check_links tool: SSRF validation -> result cache (HIT:
+ * no limiter, no quota) -> burst limiter -> per-IP hourly + global daily quota (Durable Object) -> runCheck. input = {
+ * raw, assets, max }.
  * -> { ok: true, body, headers } | { ok: false, status, code, message, headers, more }
  */
 export async function runCheckApi({ input, auth, env, ip, doFetch, selfHosts }) {
