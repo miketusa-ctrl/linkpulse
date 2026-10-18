@@ -12,7 +12,7 @@ Check one web page for broken links, redirect chains hop by hop and mixed conten
 
 LinkPulse is a remote MCP server (Streamable HTTP) at `https://linkpulse.mike-tusa.workers.dev/mcp`. Tools: `check_links`.
 
-Most MCP clients (Claude Desktop, Cursor, Cline, Windsurf) accept this config:
+Cursor, Cline and Windsurf accept this config:
 
 ```json
 {
@@ -25,7 +25,9 @@ Most MCP clients (Claude Desktop, Cursor, Cline, Windsurf) accept this config:
 }
 ```
 
-Clients that only support stdio can bridge with `npx mcp-remote https://linkpulse.mike-tusa.workers.dev/mcp`. VS Code uses a `servers` key instead of `mcpServers`.
+Claude Desktop: open Settings > Connectors, choose "Add custom connector" and paste `https://linkpulse.mike-tusa.workers.dev/mcp`. Or, for clients that only support local (stdio) servers, use the mcp-remote bridge: `npx mcp-remote https://linkpulse.mike-tusa.workers.dev/mcp`.
+
+VS Code uses a `servers` key instead of `mcpServers`.
 
 The `server.json` file is the [MCP Registry](https://registry.modelcontextprotocol.io) manifest for this server.
 
