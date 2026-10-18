@@ -1,7 +1,7 @@
 /**
- * LinkPulse remote MCP server (v0.3.0, agent-ready recipe r2). Hand-rolled JSON-RPC 2.0 over Streamable HTTP; no SDK,
- * no dependencies. Transport copied from SwearGuard/CheckDigit src/lib/mcp.js (BurnerCheck / CertGuard c2606ed /
- * DnsGuard lineage): modern 2026-07-28 tool errors keep _meta["linkpulse/error"] next to serverInfo.
+ * LinkPulse remote MCP server. Hand-rolled JSON-RPC 2.0 over Streamable HTTP; no SDK, no dependencies. Transport copied
+ * from SwearGuard/CheckDigit src/lib/mcp.js (BurnerCheck / CertGuard c2606ed / DnsGuard lineage): modern 2026-07-28 tool
+ * errors keep _meta["linkpulse/error"] next to serverInfo.
  *
  * Dual-era and stateless: modern 2026-07-28 (server/discover, tools/list, tools/call with per-request _meta and
  * MCP-Protocol-Version / Mcp-Method / Mcp-Name headers) and legacy (initialize, ping, tools/list, tools/call; batches
