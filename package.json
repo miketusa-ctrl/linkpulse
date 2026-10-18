@@ -5,11 +5,11 @@
   "description": "On-demand broken-link and redirect-chain checker with a JSON API and remote MCP server (Cloudflare Workers)",
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy"
+    "dev": "npx wrangler@4 dev",
+    "deploy": "npx wrangler@4 deploy"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   },
   "license": "MIT"
 }
