@@ -1,6 +1,6 @@
-// llms.txt, OpenAPI 3.1 and the MCP server card, generated from code constants and limitsFor(env)/quotaConfig(env)
-// (agent-ready recipe r2 §3/§4, Smithery §13.2). Adapted from SwearGuard/CheckDigit src/lib/agentdocs.js.
-// Drift tests: test/agent.test.js. Never hard-code a limit here: everything comes from `L` or code constants.
+// llms.txt, OpenAPI 3.1 and the MCP server card, generated from code constants and
+// limitsFor(env)/quotaConfig(env). Adapted from SwearGuard/CheckDigit src/lib/agentdocs.js. Never hard-code a
+// limit here: everything comes from `L` or code constants.
 import { TOOLS, SUPPORTED_VERSIONS, DISCOVERY_PER_MIN, MAX_BODY_BYTES as MCP_BODY, SERVER_INFO, RESULT_OUT, MCP_MAX_PROBLEMS, MAX_URL_LEN } from './mcp.js';
 import { VERSION, SCHEMA } from './check.js';
 
